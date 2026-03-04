@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model TokenAnalysis {
+  id            String    @id @default(cuid())
+  address       String
+  chain         String    @default("solana")
+  name          String?
+  symbol        String?
+  riskScore     Int       @map("risk_score")
+  verdict       String
+  flags         String[]
+  topHolderPct  Float?    @map("top_holder_pct")
+  price         Float?
+  liquidity     Float?
+  volume24h     Float?    @map("volume_24h")
+  userId        String?   @map("user_id")
+  checkedAt     DateTime  @default(now()) @map("checked_at")
+  outcome       String?   // "rugged" | "survived" | "dumped" | "mooned"
+  outcomeAt     DateTime? @map("outcome_at")
+
+  @@map("token_analyses")
+  @@index([address])
+  @@index([checkedAt])
+  @@index([verdict])
+  @@index([userId])
+}
+
+model UserConversation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  role      String   // "user" | "assistant"
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("user_conversations")
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model UserWatchlist {
+  id       String   @id @default(cuid())
+  userId   String   @map("user_id")
+  address  String
+  symbol   String?
+  name     String?
+  addedAt  DateTime @default(now()) @map("added_at")
+
+  @@map("user_watchlist")
+  @@unique([userId, address])
+  @@index([userId])
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  address     String
+  symbol      String?
+  condition   String    // "risk_above" | "price_drop" | "price_rise"
+  threshold   Float
+  telegramId  String?   @map("telegram_id")
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  triggeredAt DateTime? @map("triggered_at")
+
+  @@map("alerts")
+  @@index([userId])
+  @@index([active])
+}
+
+model ReportView {
+  id       String   @id @default(cuid())
+  address  String
+  viewedAt DateTime @default(now()) @map("viewed_at")
+  referer  String?
+
+  @@map("report_views")
+  @@index([address])
+}
+
+model Waitlist {
+  id       String   @id @default(cuid())
+  email    String   @unique
+  source   String?  // "landing" | "twitter" | "telegram" | etc.
+  joinedAt DateTime @default(now()) @map("joined_at")
+  invited  Boolean  @default(false)
+
+  @@map("waitlist")
+  @@index([joinedAt])
+}
