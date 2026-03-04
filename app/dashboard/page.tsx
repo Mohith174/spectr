@@ -7,8 +7,6 @@ import { InputBar } from "@/components/Terminal/InputBar";
 import { ToolStatus } from "@/components/Terminal/ToolStatus";
 import type { TokenRiskAssessment } from "@/agents/tools";
 
-const DAILY_LIMIT = 20;
-
 // ─── Alert command parsing ────────────────────────────────────────────────
 
 function parseAlertCommand(
