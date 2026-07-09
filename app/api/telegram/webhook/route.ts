@@ -15,6 +15,10 @@ interface TelegramUpdate {
 }
 
 export async function POST(req: Request) {
+  if (process.env.DEMO_MODE === "true") {
+    return Response.json({ ok: true });
+  }
+
   try {
     const update: TelegramUpdate = await req.json();
     const message = update.message;

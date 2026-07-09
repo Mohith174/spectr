@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SPECTR
 
-## Getting Started
+Forensic analysis terminal for Solana tokens. Paste a mint address, get a risk verdict — not a chart, not a vibe check, an actual breakdown of holder concentration, liquidity depth, and known rug patterns.
 
-First, run the development server:
+## What it does
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **`/check <address>`** — pulls live on-chain + market data (holder distribution via Helius, pricing/liquidity via Birdeye and Dexscreener) and runs it through a deterministic risk-scoring engine (`agents/forensics.ts`): holder concentration, liquidity depth, volume anomalies, pair age.
+- An LLM agent (`agents/terminal.ts`) sits on top as the terminal interface — it decides which tool to call (`assess_token_risk`, `get_token_info`, `search_tokens`) based on what you type, then narrates the verdict in a fixed, no-nonsense format. The scoring itself is not LLM-guessed; the model calls a tool and reports what the tool returns.
+- Risk verdicts: `SAFE` / `CAUTION` / `HIGH` / `RUG`, each with a 0–100 score and the specific flags that drove it.
+- Optional Telegram alerts: connect a chat ID and get pinged when a watched token's risk score crosses your threshold (`app/api/alerts/cron`, checked on a schedule).
+- Accounts (Clerk), a Pro tier (Stripe), and a small admin panel for tracking prediction accuracy over time (did a token flagged `RUG` actually rug?).
+
+## Architecture
+
+```
+User input ("check <address>")
+        │
+        ▼
+Terminal agent (agents/terminal.ts) ──tool call──▶ Forensics engine (agents/forensics.ts)
+        │                                                   │
+        │                                    Helius (holders) · Dexscreener/Birdeye (price, liquidity)
+        │                                                   │
+        ◀──────────────── verdict + flags ──────────────────┘
+        │
+        ▼
+Streamed response to terminal UI, persisted to Postgres (Prisma) for the accuracy dashboard
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Next.js (App Router) · TypeScript · Clerk (auth) · Prisma + Postgres · Upstash Redis · Stripe · Helius / Birdeye / Dexscreener (Solana data) · Telegram Bot API
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The chat/tool-calling layer runs on an OpenAI-compatible endpoint, currently wired to [NVIDIA NIM](https://build.nvidia.com/) (`meta/llama-3.1-8b-instruct`) rather than a paid provider — same `tools`-calling contract, no API cost.
 
-## Learn More
+## Running locally
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Requires a `.env.local` with `DATABASE_URL`, `DIRECT_URL` (Postgres/Prisma), `UPSTASH_REDIS_REST_URL`/`TOKEN`, Clerk keys, `NVIDIA_API_KEY`, `HELIUS_API_KEY`, and Stripe keys if testing checkout. Set `DEMO_MODE=true` to disable real Stripe checkout and the Telegram webhook (useful for a public demo deployment without touching billing or bot traffic).

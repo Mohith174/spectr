@@ -3,8 +3,11 @@ import { tools, type TokenRiskAssessment, type TokenInfo } from "./tools";
 import { assessTokenRisk, getTokenInfo, searchForTokens } from "./forensics";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://integrate.api.nvidia.com/v1",
+  apiKey: process.env.NVIDIA_API_KEY,
 });
+
+const MODEL = "meta/llama-3.1-8b-instruct";
 
 const SYSTEM_PROMPT = `You are Spectr, a forensic Solana token analysis terminal. You are a tool, not a conversationalist.
 
@@ -64,7 +67,7 @@ export async function streamChat(
 ): Promise<void> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: MODEL,
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
       tools,
       stream: true,
@@ -139,7 +142,7 @@ export async function streamChat(
 
         // Get the final response after tool execution
         const followUp = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: MODEL,
           messages: toolResultMessages,
           stream: true,
         });
