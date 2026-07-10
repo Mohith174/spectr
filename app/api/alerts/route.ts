@@ -1,11 +1,11 @@
-import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
+import { getEffectiveUser } from "@/lib/demo-auth";
 
 export const runtime = "nodejs";
 
 // GET /api/alerts — list alerts for the signed-in user
 export async function GET() {
-  const { userId } = await auth();
+  const { userId } = await getEffectiveUser();
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const alerts = await prisma.alert.findMany({
@@ -18,7 +18,7 @@ export async function GET() {
 
 // POST /api/alerts — create a new alert
 export async function POST(req: Request) {
-  const { userId } = await auth();
+  const { userId } = await getEffectiveUser();
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 
 // DELETE /api/alerts?id=<alertId> — remove an alert
 export async function DELETE(req: Request) {
-  const { userId } = await auth();
+  const { userId } = await getEffectiveUser();
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);

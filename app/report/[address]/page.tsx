@@ -189,7 +189,7 @@ export default async function ReportPage({
           <div className="terminal-border bg-surface px-4 py-3 text-xs text-muted space-y-1">
             <div>Chain: <span className="text-sub">SOLANA</span></div>
             <div>Scanned: <span className="text-sub">{timeAgo(analysis.checkedAt)} — {new Date(analysis.checkedAt).toISOString()}</span></div>
-            <div>Engine: <span className="text-sub">GPT-4o + Helius + DEXScreener</span></div>
+            <div>Engine: <span className="text-sub">Llama 3.1 + Helius + DEXScreener</span></div>
           </div>
         </section>
 

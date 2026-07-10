@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { SignedIn, SignedOut } from "@clerk/nextjs";
 import { WaitlistForm } from "@/components/WaitlistForm";
+
+const isDemoMode = process.env.DEMO_MODE === "true";
 
 export default function Home() {
   return (
@@ -20,22 +21,12 @@ export default function Home() {
             <Link href="/accuracy" className="text-sub hover:text-primary transition-colors">
               Accuracy
             </Link>
-            <SignedIn>
-              <Link
-                href="/dashboard"
-                className="border border-border-bright text-primary px-3 py-1 hover:bg-surface transition-colors tracking-widest uppercase text-xs"
-              >
-                Terminal →
-              </Link>
-            </SignedIn>
-            <SignedOut>
-              <Link
-                href="/sign-in"
-                className="text-sub hover:text-primary transition-colors"
-              >
-                Sign in
-              </Link>
-            </SignedOut>
+            <Link
+              href="/dashboard"
+              className="border border-border-bright text-primary px-3 py-1 hover:bg-surface transition-colors tracking-widest uppercase text-xs"
+            >
+              Terminal →
+            </Link>
           </div>
         </div>
       </header>
@@ -93,18 +84,7 @@ export default function Home() {
             English, before you lose money.
           </p>
 
-          <SignedOut>
-            <div className="space-y-4 max-w-md">
-              <WaitlistForm />
-              <div className="text-xs text-muted">
-                Already have access?{" "}
-                <Link href="/sign-in" className="text-sub hover:text-primary transition-colors">
-                  Sign in →
-                </Link>
-              </div>
-            </div>
-          </SignedOut>
-          <SignedIn>
+          {isDemoMode ? (
             <div className="flex items-center gap-4">
               <Link
                 href="/dashboard"
@@ -119,7 +99,41 @@ export default function Home() {
                 View accuracy data
               </Link>
             </div>
-          </SignedIn>
+          ) : (
+            <div className="space-y-4 max-w-md">
+              <WaitlistForm />
+              <div className="text-xs text-muted">
+                Already have access?{" "}
+                <Link href="/sign-in" className="text-sub hover:text-primary transition-colors">
+                  Sign in →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {isDemoMode && (
+            <div className="terminal-border bg-surface p-6 mt-10 max-w-2xl">
+              <div className="text-muted text-xs tracking-widest uppercase mb-3">
+                How to use this demo
+              </div>
+              <ol className="text-sub text-sm leading-relaxed space-y-1.5 list-decimal list-inside">
+                <li>
+                  Click <span className="text-primary">Open terminal</span> above — no sign-up needed.
+                </li>
+                <li>
+                  Paste any real Solana token mint address (or use the one shown above) after typing{" "}
+                  <span className="text-primary">/check</span>.
+                </li>
+                <li>Watch it call live Helius + Dexscreener data and return a verdict with the flags behind it.</li>
+                <li>
+                  Type <span className="text-primary">/help</span> in the terminal for the full command list.
+                </li>
+              </ol>
+              <div className="text-muted text-xs mt-3">
+                This is a public demo — everyone shares one usage pool, and payments/Telegram alerts are disabled.
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Features */}
@@ -219,31 +233,43 @@ export default function Home() {
         {/* CTA */}
         <section className="border-t border-border">
           <div className="max-w-5xl mx-auto px-6 py-16 text-center">
-            <div className="text-muted text-xs tracking-widest uppercase mb-4">
-              Early access
-            </div>
-            <h2 className="text-xl font-bold tracking-tight mb-3">
-              Be first in line.
-            </h2>
-            <p className="text-sub text-sm mb-8 max-w-sm mx-auto">
-              SPECTR is rolling out to early users first.
-              Join the waitlist and we&apos;ll notify you when access opens.
-            </p>
-            <SignedOut>
-              <div className="flex justify-center">
-                <div className="w-full max-w-md">
-                  <WaitlistForm />
+            {isDemoMode ? (
+              <>
+                <div className="text-muted text-xs tracking-widest uppercase mb-4">
+                  Public demo
                 </div>
-              </div>
-            </SignedOut>
-            <SignedIn>
-              <Link
-                href="/dashboard"
-                className="inline-block bg-primary text-bg font-bold px-8 py-3 text-sm tracking-widest uppercase hover:bg-[#d0d0d0] transition-colors"
-              >
-                Open terminal →
-              </Link>
-            </SignedIn>
+                <h2 className="text-xl font-bold tracking-tight mb-3">
+                  Try it — no account needed.
+                </h2>
+                <p className="text-sub text-sm mb-8 max-w-sm mx-auto">
+                  This build is open for anyone to test the forensic terminal directly.
+                </p>
+                <Link
+                  href="/dashboard"
+                  className="inline-block bg-primary text-bg font-bold px-8 py-3 text-sm tracking-widest uppercase hover:bg-[#d0d0d0] transition-colors"
+                >
+                  Open terminal →
+                </Link>
+              </>
+            ) : (
+              <>
+                <div className="text-muted text-xs tracking-widest uppercase mb-4">
+                  Early access
+                </div>
+                <h2 className="text-xl font-bold tracking-tight mb-3">
+                  Be first in line.
+                </h2>
+                <p className="text-sub text-sm mb-8 max-w-sm mx-auto">
+                  SPECTR is rolling out to early users first.
+                  Join the waitlist and we&apos;ll notify you when access opens.
+                </p>
+                <div className="flex justify-center">
+                  <div className="w-full max-w-md">
+                    <WaitlistForm />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </section>
       </main>

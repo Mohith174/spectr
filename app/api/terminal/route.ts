@@ -1,35 +1,34 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { streamChat, type Message } from "@/agents/terminal";
 import { prisma } from "@/lib/db";
+import { getEffectiveUser, isDemoMode } from "@/lib/demo-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const MAX_INPUT_CHARS = 500;
 const DAILY_FREE_LIMIT = 20;
+const DEMO_SHARED_DAILY_LIMIT = 100;
 
 export async function POST(req: Request) {
-  // Auth — require signed-in user
-  const { userId } = await auth();
+  const { userId, isPro } = await getEffectiveUser();
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Pro users get unlimited scans — check Clerk public metadata
-  const user = await currentUser();
-  const isPro = user?.publicMetadata?.plan === "pro";
-
-  // Usage limit — 20 /check scans per day (free tier only)
+  // Usage limit — shared pool in demo mode, per-user free tier otherwise
   if (!isPro) {
+    const limit = isDemoMode ? DEMO_SHARED_DAILY_LIMIT : DAILY_FREE_LIMIT;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const usedToday = await prisma.tokenAnalysis.count({
       where: { userId, checkedAt: { gte: today } },
     });
-    if (usedToday >= DAILY_FREE_LIMIT) {
+    if (usedToday >= limit) {
       return Response.json(
         {
-          error: `Daily limit reached (${DAILY_FREE_LIMIT}/${DAILY_FREE_LIMIT} scans). Resets at midnight UTC.`,
+          error: isDemoMode
+            ? `This public demo hit its shared daily limit (${limit} scans). Try again after midnight UTC.`
+            : `Daily limit reached (${limit}/${limit} scans). Resets at midnight UTC.`,
           upgrade: true,
         },
         { status: 429 }

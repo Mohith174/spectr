@@ -7,6 +7,8 @@ import { InputBar } from "@/components/Terminal/InputBar";
 import { ToolStatus } from "@/components/Terminal/ToolStatus";
 import type { TokenRiskAssessment } from "@/agents/tools";
 
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 // ─── Alert command parsing ────────────────────────────────────────────────
 
 function parseAlertCommand(
@@ -379,13 +381,15 @@ export default function Dashboard() {
             ) : (
               <span className="text-muted">READY</span>
             )}
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "w-6 h-6",
-                },
-              }}
-            />
+            {!isDemoMode && (
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox: "w-6 h-6",
+                  },
+                }}
+              />
+            )}
           </div>
         </div>
       </header>
@@ -408,7 +412,7 @@ export default function Dashboard() {
       <footer className="border-t border-border px-6 py-1.5">
         <div className="flex items-center justify-between text-xs text-muted font-mono">
           <span>NOT FINANCIAL ADVICE — USE AT YOUR OWN RISK</span>
-          <span>GPT-4o + DEXSCREENER + HELIUS</span>
+          <span>LLAMA 3.1 + DEXSCREENER + HELIUS</span>
         </div>
       </footer>
     </div>
