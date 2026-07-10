@@ -3,6 +3,30 @@ import { getHolderDistribution } from "@/lib/helius";
 import { prisma } from "@/lib/db";
 import type { TokenRiskAssessment, TokenInfo } from "./tools";
 
+const MINT_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * Resolve arbitrary user input (mint address, ticker, or name) to a Solana
+ * mint address. If the input already looks like a base58 mint address, it's
+ * returned as-is. Otherwise, searches DEXScreener for a matching Solana pair
+ * and returns the base token address of the highest-liquidity match.
+ */
+export async function resolveToMint(input: string): Promise<string | null> {
+  if (MINT_ADDRESS_RE.test(input)) {
+    return input;
+  }
+
+  const pairs = await searchTokens(input);
+  const solanaPairs = pairs.filter((p) => p.chainId === "solana");
+  if (solanaPairs.length === 0) return null;
+
+  const best = solanaPairs.reduce((top, p) =>
+    (p.liquidity?.usd || 0) > (top.liquidity?.usd || 0) ? p : top
+  );
+
+  return best.baseToken.address;
+}
+
 interface RiskFlag {
   flag: string;
   severity: "critical" | "high" | "medium" | "low";
@@ -201,13 +225,39 @@ function generateSummary(
 }
 
 export async function assessTokenRisk(
-  address: string,
+  input: string,
   userId?: string
 ): Promise<TokenRiskAssessment> {
+  const address = await resolveToMint(input);
+
+  if (address === null) {
+    return {
+      address: input,
+      name: null,
+      symbol: null,
+      riskScore: 0,
+      verdict: "CAUTION",
+      flags: [`Could not resolve '${input}' to a Solana token — provide a mint address`],
+      topHolderPct: null,
+      top10HolderPct: null,
+      price: null,
+      liquidity: null,
+      volume24h: null,
+      holders: null,
+      summary: `Could not resolve '${input}' to a known Solana token. Provide a valid mint address or a well-known ticker/name.`,
+    };
+  }
+
   // Fetch data from both sources in parallel; handle individual failures gracefully
   const [dexData, holderData] = await Promise.all([
-    getTokenPair(address).catch(() => null),
-    getHolderDistribution(address).catch(() => null),
+    getTokenPair(address).catch((err) => {
+      console.warn("[forensics] getTokenPair failed:", err);
+      return null;
+    }),
+    getHolderDistribution(address).catch((err) => {
+      console.warn("[forensics] getHolderDistribution failed:", err);
+      return null;
+    }),
   ]);
 
   const name = dexData?.baseToken.name || null;
@@ -309,7 +359,10 @@ export async function assessTokenRisk(
   return assessment;
 }
 
-export async function getTokenInfo(address: string): Promise<TokenInfo | null> {
+export async function getTokenInfo(input: string): Promise<TokenInfo | null> {
+  const address = await resolveToMint(input);
+  if (address === null) return null;
+
   const dexData = await getTokenPair(address);
   if (!dexData) return null;
 

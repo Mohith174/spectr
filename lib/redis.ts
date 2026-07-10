@@ -10,12 +10,24 @@ export async function withCache<T>(
   ttlSeconds: number,
   fn: () => Promise<T>
 ): Promise<T> {
-  const cached = await redis.get<T>(key);
-  if (cached !== null) {
-    return cached;
+  try {
+    const cached = await redis.get<T>(key);
+    if (cached !== null) {
+      return cached;
+    }
+  } catch (err) {
+    console.warn("[redis] get failed, treating as cache miss:", key, err);
   }
 
   const result = await fn();
-  await redis.setex(key, ttlSeconds, result);
+
+  if (result != null) {
+    try {
+      await redis.setex(key, ttlSeconds, result);
+    } catch (err) {
+      console.warn("[redis] setex failed (non-fatal):", key, err);
+    }
+  }
+
   return result;
 }

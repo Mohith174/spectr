@@ -14,11 +14,18 @@ async function rpc(method: string, params: unknown): Promise<unknown> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn("[helius] rpc", method, "http", res.status);
+      return null;
+    }
     const data = await res.json();
-    if (data.error) return null;
+    if (data.error) {
+      console.warn("[helius] rpc", method, "error", data.error.message ?? data.error);
+      return null;
+    }
     return data.result ?? null;
-  } catch {
+  } catch (err) {
+    console.warn("[helius] rpc", method, "failed", err);
     return null;
   }
 }
@@ -66,7 +73,7 @@ export async function getHolderDistribution(address: string): Promise<{
       rpc("getTokenAccounts", {
         mint: address,
         page: 1,
-        limit: 1,
+        limit: 1000,
         displayOptions: { showZeroBalance: false },
       }),
     ]);
@@ -87,7 +94,16 @@ export async function getHolderDistribution(address: string): Promise<{
       .reduce((sum, amt) => sum + (amt / totalSupply) * 100, 0);
 
     const accounts = accountsResult as HeliusTokenAccountsResult | null;
-    const totalHolders = accounts?.total ?? null;
+    // Helius returns an exact `total` when it's under the page size (1000).
+    // At/above that, `total` is unreliable (may just echo the page size), so
+    // treat it as unknown rather than reporting a misleadingly large/small number.
+    // Risk flags only care about counts under 200, so "unknown" is safe here.
+    const totalHolders =
+      accounts?.total != null
+        ? accounts.total < 1000
+          ? accounts.total
+          : null
+        : null;
 
     return { topHolderPct, top10HolderPct, totalHolders };
   });

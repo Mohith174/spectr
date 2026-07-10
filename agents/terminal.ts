@@ -9,7 +9,13 @@ const openai = new OpenAI({
   apiKey: process.env.NVIDIA_API_KEY || "nvapi-build-placeholder",
 });
 
-const MODEL = "meta/llama-3.1-8b-instruct";
+// NOTE: the spec called for "meta/llama-3.3-70b-instruct". It is listed by
+// GET /v1/models on this NVIDIA NIM key, but every chat.completions request
+// to it hung indefinitely in testing (no response after 90s and again after
+// 170s, not even an error) — reproduced twice. "meta/llama-3.1-70b-instruct"
+// is confirmed available, responds in ~1.3s, and supports tool calling, so
+// it's used here as the working 70B upgrade from the prior 8B model.
+const MODEL = "meta/llama-3.1-70b-instruct";
 
 const SYSTEM_PROMPT = `You are Spectr, a forensic Solana token analysis terminal. You are a tool, not a conversationalist.
 
@@ -19,6 +25,8 @@ RULES — FOLLOW EXACTLY:
 3. search_tokens is ONLY when user provides a name/symbol, not an address.
 4. Never produce markdown formatting (**bold**, _italic_, # headers). Output plain text only.
 5. After getting tool results, lead with the verdict on its own line. Then metrics. Then flags if any.
+6. Never call any tool when the user has not mentioned a token, address, ticker, or market topic. For greetings or small talk, reply with a short one-line plain-text response listing what Spectr can do (e.g. checking token risk, holder concentration, liquidity, and price/volume lookups) — do not call any tool for these messages.
+7. When the user gives a ticker/symbol/name rather than an address, you may pass it directly to assess_token_risk or get_token_info — the backend resolves symbols to mint addresses for you.
 
 OUTPUT FORMAT (plain text, no markdown):
 VERDICT: SAFE | CAUTION | HIGH | RUG
@@ -62,103 +70,125 @@ async function executeToolCall(
   }
 }
 
+interface AccumulatingToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+const MAX_TOOL_ROUNDS = 3;
+
 export async function streamChat(
   messages: Message[],
   callbacks: StreamCallbacks,
   context?: { userId?: string }
 ): Promise<void> {
   try {
-    const response = await openai.chat.completions.create({
-      model: MODEL,
-      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
-      tools,
-      stream: true,
-    });
+    const conversation: OpenAI.ChatCompletionMessageParam[] = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...messages,
+    ];
 
     let fullResponse = "";
-    let currentToolCall: {
-      id: string;
-      name: string;
-      arguments: string;
-    } | null = null;
 
-    for await (const chunk of response) {
-      const delta = chunk.choices[0]?.delta;
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const response = await openai.chat.completions.create({
+        model: MODEL,
+        messages: conversation,
+        tools,
+        stream: true,
+      });
 
-      // Handle content tokens
-      if (delta?.content) {
-        fullResponse += delta.content;
-        callbacks.onToken(delta.content);
-      }
+      const toolCallsByIndex = new Map<number, AccumulatingToolCall>();
+      let finishReason: string | null = null;
 
-      // Handle tool calls
-      if (delta?.tool_calls) {
-        for (const toolCall of delta.tool_calls) {
-          if (toolCall.id) {
-            // New tool call starting
-            currentToolCall = {
-              id: toolCall.id,
-              name: toolCall.function?.name || "",
-              arguments: toolCall.function?.arguments || "",
-            };
-          } else if (currentToolCall && toolCall.function?.arguments) {
-            // Accumulating arguments
-            currentToolCall.arguments += toolCall.function.arguments;
+      for await (const chunk of response) {
+        const delta = chunk.choices[0]?.delta;
+
+        // Handle content tokens
+        if (delta?.content) {
+          fullResponse += delta.content;
+          callbacks.onToken(delta.content);
+        }
+
+        // Handle tool calls — accumulate by index so multiple parallel
+        // tool calls in a single round are captured independently.
+        if (delta?.tool_calls) {
+          for (const toolCall of delta.tool_calls) {
+            const existing = toolCallsByIndex.get(toolCall.index);
+            if (!existing) {
+              toolCallsByIndex.set(toolCall.index, {
+                id: toolCall.id || "",
+                name: toolCall.function?.name || "",
+                arguments: toolCall.function?.arguments || "",
+              });
+            } else {
+              if (toolCall.id) existing.id = toolCall.id;
+              if (toolCall.function?.name) existing.name += toolCall.function.name;
+              if (toolCall.function?.arguments) existing.arguments += toolCall.function.arguments;
+            }
           }
+        }
+
+        if (chunk.choices[0]?.finish_reason) {
+          finishReason = chunk.choices[0].finish_reason;
         }
       }
 
-      // Check if tool call is complete (finish_reason)
-      if (chunk.choices[0]?.finish_reason === "tool_calls" && currentToolCall) {
-        const args = JSON.parse(currentToolCall.arguments);
-        callbacks.onToolCall(currentToolCall.name, args);
+      const accumulatedToolCalls = Array.from(toolCallsByIndex.values());
 
-        // Execute the tool
-        const result = await executeToolCall(currentToolCall.name, args, context?.userId);
-        callbacks.onToolResult(currentToolCall.name, result);
+      if (finishReason === "tool_calls" && accumulatedToolCalls.length > 0) {
+        const assistantToolCalls: OpenAI.ChatCompletionMessageToolCall[] = [];
+        const toolMessages: OpenAI.ChatCompletionMessageParam[] = [];
 
-        // Continue conversation with tool result
-        const toolResultMessages: OpenAI.ChatCompletionMessageParam[] = [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...messages,
-          {
-            role: "assistant",
-            content: null,
-            tool_calls: [
-              {
-                id: currentToolCall.id,
-                type: "function",
-                function: {
-                  name: currentToolCall.name,
-                  arguments: currentToolCall.arguments,
-                },
-              },
-            ],
-          },
-          {
+        for (const call of accumulatedToolCalls) {
+          assistantToolCalls.push({
+            id: call.id,
+            type: "function",
+            function: {
+              name: call.name,
+              arguments: call.arguments,
+            },
+          });
+
+          let args: Record<string, unknown>;
+          try {
+            args = JSON.parse(call.arguments);
+          } catch {
+            callbacks.onToolResult(call.name, { error: "invalid tool arguments" });
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: JSON.stringify({ error: "invalid tool arguments" }),
+            });
+            continue;
+          }
+
+          callbacks.onToolCall(call.name, args);
+          const result = await executeToolCall(call.name, args, context?.userId);
+          callbacks.onToolResult(call.name, result);
+
+          toolMessages.push({
             role: "tool",
-            tool_call_id: currentToolCall.id,
+            tool_call_id: call.id,
             content: JSON.stringify(result),
-          },
-        ];
-
-        // Get the final response after tool execution
-        const followUp = await openai.chat.completions.create({
-          model: MODEL,
-          messages: toolResultMessages,
-          stream: true,
-        });
-
-        for await (const followUpChunk of followUp) {
-          const content = followUpChunk.choices[0]?.delta?.content;
-          if (content) {
-            fullResponse += content;
-            callbacks.onToken(content);
-          }
+          });
         }
 
-        currentToolCall = null;
+        conversation.push({
+          role: "assistant",
+          content: null,
+          tool_calls: assistantToolCalls,
+        });
+        conversation.push(...toolMessages);
+
+        // Continue the loop so the model can chain further tool calls
+        // (e.g. search_tokens followed by assess_token_risk).
+        continue;
       }
+
+      // "stop" (or no tool calls) — we're done.
+      break;
     }
 
     callbacks.onComplete(fullResponse);
