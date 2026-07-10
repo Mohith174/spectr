@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getEffectiveUser, isDemoMode } from "@/lib/demo-auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const DAILY_FREE_LIMIT = 20;
 const DEMO_SHARED_DAILY_LIMIT = 100;

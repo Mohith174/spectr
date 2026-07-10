@@ -14,6 +14,11 @@ export const metadata: Metadata = {
   description: "Forensic-grade Solana token risk analysis. Detect scams before you lose money.",
 };
 
+// Every route in this app depends on env-checked auth state (Clerk vs demo
+// mode) or live DB/API data — force dynamic rendering app-wide so those
+// checks always happen at request time, never baked in at static build time.
+export const dynamic = "force-dynamic";
+
 const isDemoMode = process.env.DEMO_MODE === "true";
 
 const clerkAppearance = {

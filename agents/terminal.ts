@@ -2,9 +2,11 @@ import OpenAI from "openai";
 import { tools, type TokenRiskAssessment, type TokenInfo } from "./tools";
 import { assessTokenRisk, getTokenInfo, searchForTokens } from "./forensics";
 
+// Falls back to a placeholder so importing this module doesn't crash builds
+// where the key isn't configured — see lib/stripe.ts for the same pattern.
 const openai = new OpenAI({
   baseURL: "https://integrate.api.nvidia.com/v1",
-  apiKey: process.env.NVIDIA_API_KEY,
+  apiKey: process.env.NVIDIA_API_KEY || "nvapi-build-placeholder",
 });
 
 const MODEL = "meta/llama-3.1-8b-instruct";
